@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Escanear credencial</title>
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <style>
+    :root{
+      --navy: #17233F; --navy-deep: #0E1730; --cream: #F7F2E4;
+      --gold: #C9A227; --gold-dim: #8A7220;
+    }
+    *{ box-sizing: border-box; }
+    html, body{
+      margin:0; padding:0; height:100%;
+      background: var(--navy-deep); color: var(--cream);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+    .stage{
+      min-height:100vh; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; gap:16px;
+      padding:24px; text-align:center;
+    }
+    h1{ font-size:20px; margin:0; font-weight:600; }
+    p{ margin:0; color:#C9C4B4; font-size:14px; max-width:320px; }
+    #video{
+      width:100%; max-width:360px; aspect-ratio: 4/3; object-fit:cover;
+      border-radius:14px; border:2px solid var(--gold-dim); background:#000;
+    }
+    #estado{
+      font-family: 'Courier New', monospace; font-size:13px; color: var(--gold);
+      min-height:18px;
+    }
+    #errorBox{
+      display:none; max-width:320px; font-size:13px; color:#E8A0A0;
+      background: rgba(224,120,120,0.1); border:1px solid rgba(224,120,120,0.35);
+      padding:12px 16px; border-radius:9px;
+    }
+    a.volver{
+      color:#C9C4B4; font-size:13px; text-decoration:none; border-bottom:1px dashed #C9C4B4;
+    }
+    canvas{ display:none; }
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <h1>📷 Escanea tu credencial</h1>
+    <p>Apunta el código QR o de barras hacia la cámara</p>
+    <video id="video" autoplay playsinline muted></video>
+    <div id="estado">Iniciando cámara…</div>
+    <div id="errorBox"></div>
+    <a class="volver" id="linkVolver" href="#">← Cancelar y regresar</a>
+  </div>
+
+  <canvas id="canvas"></canvas>
+
+  <script>
+    // La URL de vuelta a tu sistema viene como parámetro ?volver=...
+    // (Index.html arma este link automáticamente, no hay que
+    // configurar nada aquí a mano).
+    const params = new URLSearchParams(window.location.search);
+    const urlVolver = params.get('volver');
+
+    const errorBox = document.getElementById('errorBox');
+    const estado = document.getElementById('estado');
+    const linkVolver = document.getElementById('linkVolver');
+
+    if (!urlVolver) {
+      estado.textContent = '';
+      errorBox.style.display = 'block';
+      errorBox.textContent =
+        'Falta el parámetro "volver" en la URL. Esta página debe abrirse ' +
+        'desde el botón de cámara de tu sistema de asistencia, no directamente.';
+    } else {
+      linkVolver.href = urlVolver;
+    }
+
+    let streamCamara = null;
+    let yaLeido = false;
+
+    async function iniciar(){
+      if (!urlVolver) return;
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        estado.textContent = '';
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'Este navegador no permite acceso a la cámara.';
+        return;
+      }
+
+      try {
+        streamCamara = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment' }
+        });
+        const video = document.getElementById('video');
+        video.srcObject = streamCamara;
+        estado.textContent = 'Buscando código…';
+        requestAnimationFrame(analizarFrame);
+      } catch (err) {
+        estado.textContent = '';
+        errorBox.style.display = 'block';
+        errorBox.textContent = 'No se pudo activar la cámara: [' + err.name + '] ' + err.message;
+      }
+    }
+
+    function analizarFrame(){
+      if (yaLeido) return;
+      const video = document.getElementById('video');
+      const canvas = document.getElementById('canvas');
+
+      if (video.readyState === video.HAVE_ENOUGH_DATA) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const resultado = jsQR(imageData.data, canvas.width, canvas.height);
+
+        if (resultado && resultado.data) {
+          yaLeido = true;
+          estado.textContent = '✅ Código detectado, regresando…';
+          if (streamCamara) streamCamara.getTracks().forEach(t => t.stop());
+
+          const separador = urlVolver.includes('?') ? '&' : '?';
+          window.location.href = urlVolver + separador + 'codigo=' + encodeURIComponent(resultado.data);
+          return;
+        }
+      }
+      requestAnimationFrame(analizarFrame);
+    }
+
+    iniciar();
+  </script>
+</body>
+</html>
