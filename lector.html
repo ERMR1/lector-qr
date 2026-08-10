@@ -122,7 +122,7 @@
           if (streamCamara) streamCamara.getTracks().forEach(t => t.stop());
 
           const separador = urlVolver.includes('?') ? '&' : '?';
-          window.location.href = urlVolver + separador + 'codigo=' + encodeURIComponent(resultado.data);
+          window.top.location.href = urlVolver + separador + 'codigo=' + encodeURIComponent(resultado.data);
           return;
         }
       }
